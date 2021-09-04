@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# This script allows you to copy text into clipboard from console,
+# even if you are doing it through SSH.
+#
+# It's implemented using OSC52 escape sequence and works with both
+# screen and tmux
+
+base64_encode() {
+	WRAP="$1"
+
+	if [[ "$OSTYPE" == "darwin"* ]] || [[ "$OSTYPE" == *"bsd"* ]]; then
+		base64 -b "$WRAP"
+	else
+		base64 -w "$WRAP"
+	fi
+}
+
+osc52() {
+	printf "\033]52;c;"
+	cat | base64_encode 0 | tr -d "\n"
+	printf "\007"
+}
+
+osc52_tmux() {
+	printf "\033Ptmux;\033\033]52;c;"
+	cat | base64_encode 0 | tr -d "\n"
+	printf "\007\033\\"
+}
+
+# GNU Screen doesn't support OSC52, but can pass DCS escape sequences to the
+# parent terminal, so we pack OSC52 into DCS
+osc52_dcs() {
+	printf "\033P\033]52;c;"
+	cat | base64_encode 76 | awk -v RS="" '{gsub (/\n/,"\033/\033P")}1' | sed 's/\//\\/g' | tr -d "\n"
+	printf "\007\033\x5c"
+}
+
+
+if [[ ! -z "$TMUX" ]]; then
+	osc52_tmux > /dev/fd/2
+elif [[ "$TERM" == "screen" ]]; then
+	osc52_dcs > /dev/fd/2
+else
+	osc52 > /dev/fd/2
+fi
